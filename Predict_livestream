@@ -1,0 +1,16 @@
+from ultralytics import YOLO
+# import config.py 
+
+# Load trained model 
+model = YOLO("custom_model.pt")
+
+# Generic RTSP URL format
+# rtsp://[username]:[password]@[ip_address]:[port]/[stream_path]
+# RTSP-URL for the IP-camera
+rtsp_url_camera1 = "rtsp://admin:password123@192.168.1.100:554/h264Preview_01_sub"
+
+# RTSP URL for the camera - now retrieved from config
+# rtsp_url_camera1 = config.RTSP_URL_CAMERA1
+
+# Voer de voorspelling uit op de eerste camera
+model.predict(source=rtsp_url_camera1, show=True, save=False, conf=0.4)

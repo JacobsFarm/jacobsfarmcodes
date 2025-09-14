@@ -1,5 +1,5 @@
 from ultralytics import YOLO
-# import config.py 
+# import config
 
 # Load trained model 
 model = YOLO("custom_model.pt")

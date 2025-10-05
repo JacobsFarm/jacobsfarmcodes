@@ -1,0 +1,13 @@
+from ultralytics import YOLO
+
+model = YOLO('model.pt')
+
+# Direct naar TensorRT engine
+model.export(
+    format="engine",
+    imgsz=640,
+    half=True,
+    device='0',
+    workspace=4,
+    batch=1
+)

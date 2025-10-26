@@ -1,22 +1,27 @@
+"""
 YOLO Dataset Synchronization Tool
 
 This script synchronizes YOLO format datasets by ensuring that every image file
 has a corresponding label file and vice versa. It helps maintain dataset integrity
 by identifying and optionally removing orphaned files.
 
+Supports multiple label formats: .txt, .json, .jsonl, .xml, .yaml, .yml
+
 Usage:
-    python sync_yolo_dataset.py <images_folder> <labels_folder>
+    python sync_yolo_dataset.py <images_folder> <labels_folder> [--label-formats FORMAT1 FORMAT2 ...]
 
 Example:
     python sync_yolo_dataset.py ./dataset/images ./dataset/labels
+    python sync_yolo_dataset.py ./dataset/images ./dataset/labels --label-formats .txt .json
 """
 
 import os
 import sys
+import argparse
 from pathlib import Path
 
 
-def sync_yolo_dataset(images_folder, labels_folder):
+def sync_yolo_dataset(images_folder, labels_folder, label_formats=None):
     """
     Synchronizes a YOLO dataset by ensuring that each image file
     has a corresponding label file and vice versa.
@@ -24,6 +29,7 @@ def sync_yolo_dataset(images_folder, labels_folder):
     Args:
         images_folder (str): Path to the folder containing images
         labels_folder (str): Path to the folder containing labels
+        label_formats (set): Set of label file extensions to consider (e.g., {'.txt', '.json'})
     """
     # Convert to Path objects for better path handling
     images_path = Path(images_folder)
@@ -39,18 +45,27 @@ def sync_yolo_dataset(images_folder, labels_folder):
         return
     
     # Supported image formats
-    image_extensions = {'.jpg', '.jpeg', '.png', '.bmp', '.tiff', '.tif'}
+    image_extensions = {'.jpg', '.jpeg', '.png', '.bmp', '.tiff', '.tif', '.webp', '.gif'}
     
-    # Collect all files
+    # Default label formats if not specified
+    if label_formats is None:
+        label_formats = {'.txt', '.json', '.jsonl', '.xml', '.yaml', '.yml'}
+    
+    # Collect all image files
     image_files = set()
+    image_file_map = {}  # Maps stem to full Path object
     for file in images_path.iterdir():
         if file.suffix.lower() in image_extensions:
-            image_files.add(file.stem)  # Store filename without extension
+            image_files.add(file.stem)
+            image_file_map[file.stem] = file
     
+    # Collect all label files
     label_files = set()
+    label_file_map = {}  # Maps stem to full Path object
     for file in labels_path.iterdir():
-        if file.suffix == '.txt':
-            label_files.add(file.stem)  # Store filename without extension
+        if file.suffix.lower() in label_formats:
+            label_files.add(file.stem)
+            label_file_map[file.stem] = file
     
     # Find images without labels
     images_without_labels = image_files - label_files
@@ -62,6 +77,8 @@ def sync_yolo_dataset(images_folder, labels_folder):
     print("=" * 50)
     print("YOLO Dataset Synchronization Report")
     print("=" * 50)
+    print(f"Image formats: {', '.join(sorted(image_extensions))}")
+    print(f"Label formats: {', '.join(sorted(label_formats))}")
     print(f"Total images found: {len(image_files)}")
     print(f"Total labels found: {len(label_files)}")
     print(f"Images without labels: {len(images_without_labels)}")
@@ -74,14 +91,16 @@ def sync_yolo_dataset(images_folder, labels_folder):
         if images_without_labels:
             print("\nImages without labels:")
             for img in sorted(images_without_labels)[:10]:  # Show first 10
-                print(f"  - {img}")
+                img_path = image_file_map[img]
+                print(f"  - {img_path.name}")
             if len(images_without_labels) > 10:
                 print(f"  ... and {len(images_without_labels) - 10} more")
         
         if labels_without_images:
             print("\nLabels without images:")
             for lbl in sorted(labels_without_images)[:10]:  # Show first 10
-                print(f"  - {lbl}.txt")
+                lbl_path = label_file_map[lbl]
+                print(f"  - {lbl_path.name}")
             if len(labels_without_images) > 10:
                 print(f"  ... and {len(labels_without_images) - 10} more")
         
@@ -96,18 +115,16 @@ def sync_yolo_dataset(images_folder, labels_folder):
         # Remove images without labels
         removed_images = 0
         for img_stem in images_without_labels:
-            for ext in image_extensions:
-                img_path = images_path / f"{img_stem}{ext}"
-                if img_path.exists():
-                    img_path.unlink()
-                    removed_images += 1
-                    print(f"Removed: {img_path}")
-                    break
+            img_path = image_file_map[img_stem]
+            if img_path.exists():
+                img_path.unlink()
+                removed_images += 1
+                print(f"Removed: {img_path}")
         
         # Remove labels without images
         removed_labels = 0
         for lbl_stem in labels_without_images:
-            lbl_path = labels_path / f"{lbl_stem}.txt"
+            lbl_path = label_file_map[lbl_stem]
             if lbl_path.exists():
                 lbl_path.unlink()
                 removed_labels += 1
@@ -129,18 +146,45 @@ def sync_yolo_dataset(images_folder, labels_folder):
 
 def main():
     """Main entry point of the script."""
-    if len(sys.argv) != 3:
-        print("Usage: python sync_yolo_dataset.py <images_folder> <labels_folder>")
-        print("\nExamples:")
-        print("  python sync_yolo_dataset.py ./dataset/images ./dataset/labels")
-        print("  python sync_yolo_dataset.py /path/to/train/images /path/to/train/labels")
-        sys.exit(1)
+    parser = argparse.ArgumentParser(
+        description='Synchronize YOLO dataset by matching images with labels',
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog="""
+Examples:
+  # Use default label formats (.txt, .json, .jsonl, .xml, .yaml, .yml)
+  python sync_yolo_dataset.py ./dataset/images ./dataset/labels
+  
+  # Specify specific label formats
+  python sync_yolo_dataset.py ./dataset/images ./dataset/labels --label-formats .txt .json
+  
+  # Only use .txt files as labels
+  python sync_yolo_dataset.py ./dataset/images ./dataset/labels --label-formats .txt
+        """
+    )
     
-    images_folder = sys.argv[1]
-    labels_folder = sys.argv[2]
+    parser.add_argument('images_folder', help='Path to the folder containing images')
+    parser.add_argument('labels_folder', help='Path to the folder containing labels')
+    parser.add_argument(
+        '--label-formats',
+        nargs='+',
+        help='Label file formats to consider (e.g., .txt .json .xml). Default: all supported formats',
+        default=None
+    )
+    
+    args = parser.parse_args()
+    
+    # Convert label formats to lowercase set
+    label_formats = None
+    if args.label_formats:
+        label_formats = set()
+        for fmt in args.label_formats:
+            # Add dot if not present
+            if not fmt.startswith('.'):
+                fmt = '.' + fmt
+            label_formats.add(fmt.lower())
     
     try:
-        sync_yolo_dataset(images_folder, labels_folder)
+        sync_yolo_dataset(args.images_folder, args.labels_folder, label_formats)
     except KeyboardInterrupt:
         print("\n\nOperation cancelled by user.")
         sys.exit(0)
